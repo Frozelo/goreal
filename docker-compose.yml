@@ -19,11 +19,13 @@ services:
   writer:
     build:
       context: ./writer
+      dockerfile: Dockerfile
     depends_on:
       - kafka
 
   reader:
     build:
       context: ./reader
+      dockerfile: Dockerfile
     depends_on:
       - kafka
