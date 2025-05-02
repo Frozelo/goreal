@@ -1,18 +1,16 @@
-FROM golang:1.24.1-alpine
+FROM golang:1.24.1-alpine as build
 
 WORKDIR /app
-
-RUN apk add --no-cache
 
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY .. .
+COPY . ./
 
+RUN go build -o writer main.go
 
+FROM alpine:latest
 
-RUN go build -o /writer ./main.go
-
-EXPOSE 8080
-
-CMD ["/writer"]
+WORKDIR /app
+COPY --from=build /app/writer .
+CMD ["./writer"]
