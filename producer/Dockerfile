@@ -7,10 +7,10 @@ RUN go mod download
 
 COPY . ./
 
-RUN go build -o writer main.go
+RUN go build -o producer main.go
 
 FROM alpine:latest
 
 WORKDIR /app
-COPY --from=build /app/writer .
-CMD ["./writer"]
+COPY --from=build /app/producer .
+CMD ["./producer"]

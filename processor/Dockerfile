@@ -7,10 +7,10 @@ RUN go mod download
 
 COPY . ./
 
-RUN go build -o reader main.go
+RUN go build -o processor main.go
 
 FROM alpine:latest
 
 WORKDIR /app
-COPY --from=build /app/reader .
-CMD ["./reader"]
+COPY --from=build /app/processor .
+CMD ["./processor"]
