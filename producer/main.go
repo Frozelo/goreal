@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
+	"net/http"
 	"os"
 	"time"
 
@@ -21,7 +21,6 @@ type Event struct {
 func main() {
 	broker := os.Getenv("KAFKA_BROKER")
 	topic := os.Getenv("KAFKA_TOPIC")
-	actions := []string{"login", "logout", "click", "purchase", "view"}
 
 	kafkaCfg := kafka.WriterConfig{
 		Brokers: []string{broker},
@@ -31,34 +30,59 @@ func main() {
 	writer := kafka.NewWriter(kafkaCfg)
 	defer writer.Close()
 
-	rand.New(rand.NewSource(time.Now().UnixNano()))
 	ctx := context.Background()
 
-	for {
-		e := Event{
-			UserId:    fmt.Sprintf("user-%d", rand.Intn(5)),
-			Action:    actions[rand.Intn(len(actions))],
-			Timestamp: time.Now().Unix(),
+	http.HandleFunc("/event", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			log.Println("method not allowed")
+			w.Write([]byte(`{"error": "method not allowed"}`))
+			return
 		}
 
-		buf, err := json.Marshal(e)
+		event := &Event{
+			UserId:    r.Header.Get("user-id"),
+			Action:    r.Header.Get("action"),
+			Timestamp: time.Now().UnixNano(),
+		}
+
+		err := writeMessage(ctx, writer, event)
 		if err != nil {
-			log.Println("marshal error:", err)
-			continue
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Println("failed to write message:", err)
+			w.Write([]byte(`{"error": "failed to write message"}`))
+			return
 		}
 
-		err = writer.WriteMessages(ctx,
-			kafka.Message{
-				Key:   []byte(e.UserId),
-				Value: buf,
-			})
+		w.WriteHeader(http.StatusAccepted)
+		log.Println("event written successfully")
+		w.Write([]byte(`{"message": "event written successfully"}`))
+	})
 
-		if err != nil {
-			log.Println("write error:", err)
-		} else {
-			log.Printf("sent %+v\n", e)
-		}
-
-		time.Sleep(1 * time.Second)
+	log.Println("producer service started at port 8081")
+	if err := http.ListenAndServe(":8081", nil); err != nil {
+		log.Fatalf("failed to start HTTP server: %v", err)
 	}
+}
+
+func writeMessage(ctx context.Context, writer *kafka.Writer, event *Event) error {
+	data, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("failed to marshal event data: %v", err)
+		return fmt.Errorf("failed to marshal event data: %w", err)
+	}
+
+	err = writer.WriteMessages(ctx, kafka.Message{
+		Key:   []byte(event.UserId),
+		Value: []byte(data),
+		Time:  time.Now(),
+	})
+	if err != nil {
+		log.Printf("failed to write message: %v", err)
+		return fmt.Errorf("failed to write message: %w", err)
+	}
+
+	return nil
 }

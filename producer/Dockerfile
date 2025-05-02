@@ -13,4 +13,7 @@ FROM alpine:latest
 
 WORKDIR /app
 COPY --from=build /app/producer .
+
+EXPOSE 8081
+
 CMD ["./producer"]

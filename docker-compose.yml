@@ -42,6 +42,8 @@ services:
     environment:
       KAFKA_BROKER: kafka:9092
       KAFKA_TOPIC: prod.raw.user_actions
+    ports:
+      - "8081:8081"
     depends_on:
       - kafka
 
