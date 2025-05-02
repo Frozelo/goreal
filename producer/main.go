@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"time"
@@ -18,7 +20,14 @@ type Event struct {
 	Timestamp int64  `json:"timestamp"`
 }
 
+var genMode bool
+
+func init() {
+	flag.BoolVar(&genMode, "gen-mode", false, "generate events in a loop")
+}
+
 func main() {
+
 	broker := os.Getenv("KAFKA_BROKER")
 	topic := os.Getenv("KAFKA_TOPIC")
 
@@ -31,6 +40,14 @@ func main() {
 	defer writer.Close()
 
 	ctx := context.Background()
+
+	flag.Parse()
+
+	if genMode {
+		genDuration := 30 * time.Second
+		log.Println("starting event generator")
+		go startGenerator(ctx, writer, genDuration)
+	}
 
 	http.HandleFunc("/event", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -85,4 +102,34 @@ func writeMessage(ctx context.Context, writer *kafka.Writer, event *Event) error
 	}
 
 	return nil
+}
+
+func startGenerator(ctx context.Context, writer *kafka.Writer, duration time.Duration) error {
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+	actions := []string{"click", "view", "purchase", "signup"}
+
+	log.Println("the duration is", duration)
+	var endTime time.Time
+	if duration > 0 {
+		endTime = time.Now().Add(duration)
+	}
+
+	for {
+		if !endTime.IsZero() && time.Now().After(endTime) {
+			log.Println("generator stopped")
+			return nil
+		}
+
+		evt := &Event{
+			UserId:    fmt.Sprintf("user-%d", rand.Intn(1000)),
+			Action:    actions[rand.Intn(len(actions))],
+			Timestamp: time.Now().UnixNano(),
+		}
+
+		if err := writeMessage(ctx, writer, evt); err != nil {
+			log.Printf("error writing generated event: %v", err)
+		} else {
+			log.Printf("generated event: %v", evt)
+		}
+	}
 }
