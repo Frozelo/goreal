@@ -1,36 +1,35 @@
 package main
 
 import (
+	"context"
 	"log"
 	"time"
 
-	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/segmentio/kafka-go"
 )
 
 func main() {
-	kafkaCfg := &kafka.ConfigMap{
-		"bootstrap.servers": "localhost:9092",
-		"group.id":          "test_group",
-		"auto.offset.reset": "earliest",
+	brokers := []string{"kafka:9092"}
+
+	kafkaCfg := kafka.ReaderConfig{
+		Brokers: brokers,
+		GroupID: "my_group",
+		Topic:   "my_topic",
 	}
 
-	consumer, err := kafka.NewConsumer(kafkaCfg)
-	if err != nil {
-		panic(err)
-	}
+	reader := kafka.NewReader(kafkaCfg)
+	defer reader.Close()
 
-	defer consumer.Close()
-
-	topic := "test_topic"
-
-	consumer.Subscribe(topic, nil)
+	ctx := context.Background()
 
 	for {
-		msg, err := consumer.ReadMessage(10 * time.Second)
-		if err == nil {
-			log.Printf("Получено: %s", msg.Value)
-		} else {
-			log.Printf("Ошибка чтения сообщения: %v", err)
+		msg, err := reader.ReadMessage(ctx)
+		if err != nil {
+			log.Fatalf("could not read message: %v", err)
 		}
+
+		log.Printf("Received: %s inside %s\n", string(msg.Value), string(msg.Key))
+		time.Sleep(10 * time.Second)
 	}
+
 }

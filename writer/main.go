@@ -1,38 +1,39 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
-	"strconv"
 	"time"
 
-	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/segmentio/kafka-go"
 )
 
 func main() {
+	brokers := []string{"kafka:9092"}
 
-	kafkaConf := &kafka.ConfigMap{"bootstrap.servers": "localhost:9092"}
-
-	producer, err := kafka.NewProducer(kafkaConf)
-	if err != nil {
-		panic(err)
+	kafkaCfg := kafka.WriterConfig{
+		Brokers: brokers,
+		Topic:   "my_topic",
 	}
 
-	defer producer.Close()
+	writer := kafka.NewWriter(kafkaCfg)
+	defer writer.Close()
 
-	topic := "sample_topic"
+	ctx := context.Background()
 
 	for i := range 10 {
-		msg := []byte("the msg number " + strconv.Itoa(i))
-		kafkaMsg := &kafka.Message{
-			TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
-			Value:          msg,
+		msg := kafka.Message{
+			Key:   []byte(fmt.Sprintf("Key-%d", i)),
+			Value: []byte(fmt.Sprintf("Hello %d", i)),
 		}
 
-		producer.Produce(kafkaMsg, nil)
+		if err := writer.WriteMessages(ctx, msg); err != nil {
+			log.Fatalf("could not write message %d: %v", i, err)
+		}
 
-		log.Printf("Message %s sent", msg)
+		log.Printf("message %d written", i)
 		time.Sleep(1 * time.Second)
-	}
 
-	producer.Flush(1000)
+	}
 }
