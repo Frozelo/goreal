@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/segmentio/kafka-go"
@@ -29,11 +32,18 @@ func main() {
 	reader := kafka.NewReader(kafkaCfg)
 	defer reader.Close()
 
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	log.Println("Consumer started, waiting for messages...")
 
 	for {
 		msg, err := reader.ReadMessage(ctx)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				log.Println("Shutdown signal received, exiting read loop")
+				break
+			}
 			log.Println("read error: %w", err)
 			time.Sleep(1 * time.Second)
 			continue
@@ -48,4 +58,6 @@ func main() {
 		log.Println("Received:", e)
 	}
 
+	log.Println("Performing final cleanup before exit...")
+	log.Println("Consumer stopped")
 }
