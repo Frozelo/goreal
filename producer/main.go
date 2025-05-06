@@ -87,6 +87,11 @@ func main() {
 		Handler: mux,
 	}
 
+	log.Println("producer service started at port 8081")
+	if err := srv.ListenAndServe(); err != nil {
+		log.Fatalf("failed to start HTTP server: %v", err)
+	}
+
 	go func() {
 		<-ctx.Done()
 		log.Println("got signal to stop, shutting down HTTP server...")
@@ -95,12 +100,23 @@ func main() {
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("error shutting down HTTP server: %v", err)
 		}
+
+		longShutdown := make(chan struct{}, 1)
+
+		go func() {
+			time.Sleep(3 * time.Second)
+			longShutdown <- struct{}{}
+		}()
+
+		select {
+		case <-shutdownCtx.Done():
+			log.Println("server shutdown error: %w", ctx.Err())
+		case <-longShutdown:
+			log.Println("finished")
+		}
+
 	}()
 
-	log.Println("producer service started at port 8081")
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("failed to start HTTP server: %v", err)
-	}
 }
 
 func writeMessage(ctx context.Context, writer *kafka.Writer, event *Event) error {
