@@ -9,6 +9,8 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/segmentio/kafka-go"
@@ -27,6 +29,7 @@ func init() {
 }
 
 func main() {
+	mux := http.NewServeMux()
 
 	broker := os.Getenv("KAFKA_BROKER")
 	topic := os.Getenv("KAFKA_TOPIC")
@@ -39,7 +42,8 @@ func main() {
 	writer := kafka.NewWriter(kafkaCfg)
 	defer writer.Close()
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	flag.Parse()
 
@@ -49,7 +53,7 @@ func main() {
 		go startGenerator(ctx, writer, genDuration)
 	}
 
-	http.HandleFunc("/event", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/event", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -78,8 +82,23 @@ func main() {
 		w.Write([]byte(`{"message": "event written successfully"}`))
 	})
 
+	srv := &http.Server{
+		Addr:    ":8081",
+		Handler: mux,
+	}
+
+	go func() {
+		<-ctx.Done()
+		log.Println("got signal to stop, shutting down HTTP server...")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("error shutting down HTTP server: %v", err)
+		}
+	}()
+
 	log.Println("producer service started at port 8081")
-	if err := http.ListenAndServe(":8081", nil); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("failed to start HTTP server: %v", err)
 	}
 }
