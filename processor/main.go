@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -50,6 +49,30 @@ func writeEvent(ctx context.Context, pool *pgxpool.Pool, e *Event) error {
 	return nil
 }
 
+func kafkaReader(ctx context.Context, reader *kafka.Reader, msgCh chan<- *kafka.Message) {
+	defer close(msgCh)
+
+	for {
+		msg, err := reader.ReadMessage(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				log.Println("Context cancelled in kafkaReader (on error)")
+				return
+			}
+			log.Println("read error: %w", err)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		select {
+		case msgCh <- &msg:
+		case <-ctx.Done():
+			log.Println("Context cancelled in kafkaReaderRoutine")
+			return
+		}
+	}
+}
+
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -76,23 +99,16 @@ func main() {
 
 	log.Println("Consumer started, waiting for messages...")
 
-	for {
-		msg, err := reader.ReadMessage(ctx)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				log.Println("Shutdown signal received, exiting read loop")
-				break
-			}
-			log.Println("read error: %w", err)
-			time.Sleep(1 * time.Second)
-			continue
-		}
+	msgCh := make(chan *kafka.Message)
+	go kafkaReader(ctx, reader, msgCh)
 
-		if err = processMessage(ctx, pool, &msg); err != nil {
+	log.Println("Consumer started, waiting for messages...")
+
+	for msg := range msgCh {
+		if err := processMessage(ctx, pool, msg); err != nil {
 			log.Println(err)
 			continue
 		}
-
 	}
 
 	log.Println("Performing final cleanup before exit...")
