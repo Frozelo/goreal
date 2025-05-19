@@ -39,7 +39,7 @@ func processMessage(ctx context.Context, pool *pgxpool.Pool, message *kafka.Mess
 func writeEvent(ctx context.Context, pool *pgxpool.Pool, e *Event) error {
 	_, err := pool.Exec(ctx,
 		`
-		INSERT INTO event (userId, action, timestamp)
+		INSERT INTO event (user_id, action, timestamp)
 	 	VALUES ($1, $2, $3)
 		`,
 		e.UserId, e.Action, e.Timestamp)
@@ -54,7 +54,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	dbUrl := "asdad"
+	dbUrl := os.Getenv("DATABASE_URL")
 	pool, err := pgxpool.New(ctx, dbUrl)
 	if err != nil {
 		log.Fatalf("Unable to connect to database: %v", err)
