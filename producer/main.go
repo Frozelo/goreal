@@ -114,9 +114,7 @@ func main() {
 		case <-longShutdown:
 			log.Println("finished")
 		}
-
 	}()
-
 }
 
 func writeMessage(ctx context.Context, writer *kafka.Writer, event *Event) error {
